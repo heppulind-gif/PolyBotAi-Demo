@@ -1,0 +1,3 @@
+python-telegram-bot==20.7
+numpy>=1.24,<2.0
+scikit-learn>=1.3,<1.5
