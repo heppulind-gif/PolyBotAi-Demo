@@ -1,59 +1,76 @@
 # bot.py
-import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# ------------------------
-# Config
-# ------------------------
-TOKEN = "8146985739:AAFU0kQ3U0llvEPepQLk4Cy1tM5H1ZzeL9c"  # Your full BotFather token
+from sandbox import Sandbox
 
-# ------------------------
-# Telegram Command Handlers
-# ------------------------
+# -----------------------------
+# GLOBALS
+# -----------------------------
+sandbox = Sandbox()
+
+# -----------------------------
+# TELEGRAM COMMANDS
+# -----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Welcome to PolyPulse Bot!\n"
+        "🚀 PolyPulseBot is online!\n"
         "Commands:\n"
-        "/trade - execute trade\n"
-        "/status - dashboard\n"
-        "/kill - emergency stop\n"
-        "/ping - test responsiveness"
+        "/ping - test bot\n"
+        "/status - view dashboard\n"
+        "/correlations - view correlation map\n"
+        "/start_sandbox - start paper trading\n"
+        "/stop_sandbox - stop paper trading"
     )
 
-async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Trade executed (simulated).")
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🏓 Pong!")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Status dashboard (simulated).")
+    dashboard = sandbox.analytics.get_dashboard()
+    await update.message.reply_text(dashboard)
 
-async def kill(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Emergency Kill Switch activated.")
+async def correlations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    corr_map = sandbox.analytics.get_correlation_map()
+    await update.message.reply_text(corr_map)
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Pong! ✅ Bot is responsive.")
+async def start_sandbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not sandbox.running:
+        # Run sandbox safely in Telegram bot async loop
+        context.application.create_task(sandbox.start())
+        await update.message.reply_text("🧪 Sandbox started in background!")
+    else:
+        await update.message.reply_text("⚠️ Sandbox already running.")
 
-# ------------------------
-# Main function
-# ------------------------
-async def main():
-    # Build the Telegram bot application
+async def stop_sandbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if sandbox.running:
+        await sandbox.stop()
+        await update.message.reply_text("🛑 Sandbox stopped!")
+    else:
+        await update.message.reply_text("⚠️ Sandbox is not running.")
+
+# -----------------------------
+# MAIN BOT SETUP
+# -----------------------------
+def main():
+    TOKEN = "8146985739:AAFU0kQ3U0llvEPepQLk4Cy1tM5H1ZzeL9c"
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Add command handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("trade", trade))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("kill", kill))
     app.add_handler(CommandHandler("ping", ping))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("correlations", correlations))
+    app.add_handler(CommandHandler("start_sandbox", start_sandbox))
+    app.add_handler(CommandHandler("stop_sandbox", stop_sandbox))
 
-    # Start bot
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.idle()
+    print("[Bot] Starting Telegram bot...")
+    # ✅ run_polling handles asyncio internally; no asyncio.run()
+    app.run_polling()
 
-# ------------------------
-# Entry point
-# ------------------------
+# -----------------------------
+# ENTRY POINT
+# -----------------------------
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
