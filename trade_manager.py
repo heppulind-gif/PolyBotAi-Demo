@@ -1,87 +1,60 @@
 # trade_manager.py
-import os
 import asyncio
-import time
 from crypto_data import CryptoData
 from ml_engine import MLModel
 from portfolio_manager import PortfolioManager
-from orderbook_analyzer import OrderBookAnalyzer
 from analytics import Analytics
-from web3 import Web3  # External library, keep at the top
+from wallet_tracker import WalletTracker
+import random
 
 class TradeManager:
-    def __init__(self, paper_engine, wallet_tracker, analytics):
-        self.crypto_data = CryptoData()
-        self.ml_model = MLModel()
-        self.portfolio = PortfolioManager()
-        self.orderbook = OrderBookAnalyzer()
+    def __init__(self, crypto_data: CryptoData, ml_model: MLModel,
+                 portfolio: PortfolioManager, analytics: Analytics,
+                 wallet_tracker: WalletTracker):
+        self.crypto_data = crypto_data
+        self.ml_model = ml_model
+        self.portfolio = portfolio
         self.analytics = analytics
         self.wallet_tracker = wallet_tracker
-        self.paper_engine = paper_engine
         self.running = False
+        self.simulation_speed = 0.2  # micro-decision speed
 
-        # Web3 setup
-        self.rpc_url = os.environ.get("ETH_RPC_URL")  # e.g., Infura/Alchemy endpoint
-        self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
-        self.wallet_private_key = os.environ.get("WALLET_PRIVATE_KEY")
-        if not self.wallet_private_key:
-            raise Exception("Set WALLET_PRIVATE_KEY in environment variables")
-        self.account = self.w3.eth.account.from_key(self.wallet_private_key)
-
-        # Safety limits
-        self.max_eth_per_trade = 0.05  # Max ETH per trade
-
-    async def run_real_loop(self):
+    async def run_real_trading(self):
+        """Main loop for real trading"""
         if self.running:
             return  # Already running
-        self.running = True
-        await self.crypto_data.connect_ws()
 
-        # Import WalletTracker inside method to avoid circular import
-        from wallet_tracker import WalletTracker
+        if not self.wallet_tracker.enabled:
+            print("⚠️ Wallet not enabled. Cannot run real trades.")
+            return
+
+        self.running = True
+        print("💰 TradeManager started in REAL mode...")
 
         while self.running:
-            # Fetch market data
-            odds = await self.crypto_data.get_polymarket_odds()
-            btc, eth, link = await self.crypto_data.get_crypto_data()
+            try:
+                # Fetch market & crypto data
+                polymarket_odds = await self.crypto_data.get_polymarket_odds()
+                btc, eth, link = await self.crypto_data.get_crypto_data()
 
-            # Predict trade signal using learned ML model
-            signal, confidence = self.ml_model.predict(odds, btc, eth, link)
+                # Predict trade signal
+                signal, confidence = self.ml_model.predict(
+                    polymarket_odds, btc, eth, link
+                )
 
-            # Confirm signal via orderbook
-            snapshot = await self.orderbook.fetch_orderbook()
-            final_signal = self.orderbook.confirm_signal(signal, snapshot)
+                # Calculate stake, TP/SL
+                stake = self.portfolio.calculate_stake(confidence)
+                tp, sl = self.portfolio.calculate_tp_sl(confidence)
 
-            # Calculate stake
-            stake = self.portfolio.calculate_stake(confidence)
-            stake = min(stake, self.max_eth_per_trade)
+                # Execute trade via wallet tracker
+                profit_loss = await self.wallet_tracker.execute_trade(signal, stake, tp, sl)
 
-            # Safety check: skip if stake is zero or market illiquid
-            if stake <= 0 or final_signal == "HOLD":
-                await asyncio.sleep(1)
-                continue
+                # Update analytics & portfolio
+                self.portfolio.update_balance(profit_loss)
+                self.analytics.log_trade(signal, stake, tp, sl, profit_loss, confidence)
+                self.analytics.update_market_data(polymarket_odds, btc, eth, link)
 
-            # Execute trade on-chain (Polymarket)
-            tx_hash = self._execute_trade_onchain(final_signal, stake)
-            
-            # Update analytics
-            self.analytics.log_trade(final_signal, stake, None, None, 0, confidence)
-            self.analytics.update_market_data(odds, btc, eth, link)
-
-            # Notify via Telegram / WalletTracker
-            self.wallet_tracker.notify_trade(final_signal, stake, tx_hash)
-
-            await asyncio.sleep(1)  # Micro-decision loop
-
-    def _execute_trade_onchain(self, signal, stake):
-        """
-        Simulated: Replace with real Polymarket smart contract interaction.
-        Signs transaction with local private key.
-        """
-        # For demonstration, we just simulate a tx hash
-        tx_hash = "0x" + "".join([hex(ord(c))[2:] for c in f"{signal}{time.time()}"])[:64]
-        print(f"Executing real trade: {signal}, stake: {stake} ETH, tx: {tx_hash}")
-        return tx_hash
-
-    def stop(self):
-        self.running = False
+                await asyncio.sleep(self.simulation_speed)
+            except Exception as e:
+                print(f"[TradeManager Error] {e}")
+                await asyncio.sleep(1)            
