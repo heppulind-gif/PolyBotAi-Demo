@@ -7,7 +7,7 @@ from ml_engine import MLModel
 from portfolio_manager import PortfolioManager
 from orderbook_analyzer import OrderBookAnalyzer
 from analytics import Analytics
-from web3 import Web3
+from web3 import Web3  # External library, keep at the top
 
 class TradeManager:
     def __init__(self, paper_engine, wallet_tracker, analytics):
@@ -37,7 +37,7 @@ class TradeManager:
         self.running = True
         await self.crypto_data.connect_ws()
 
-        # Import WalletTracker here to avoid circular import
+        # Import WalletTracker inside method to avoid circular import
         from wallet_tracker import WalletTracker
 
         while self.running:
@@ -68,7 +68,7 @@ class TradeManager:
             self.analytics.log_trade(final_signal, stake, None, None, 0, confidence)
             self.analytics.update_market_data(odds, btc, eth, link)
 
-            # Notify via Telegram
+            # Notify via Telegram / WalletTracker
             self.wallet_tracker.notify_trade(final_signal, stake, tx_hash)
 
             await asyncio.sleep(1)  # Micro-decision loop
