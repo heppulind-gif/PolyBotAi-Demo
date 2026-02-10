@@ -1,12 +1,12 @@
 # trade_manager.py
 import os
 import asyncio
+import time
 from crypto_data import CryptoData
 from ml_engine import MLModel
 from portfolio_manager import PortfolioManager
 from orderbook_analyzer import OrderBookAnalyzer
 from analytics import Analytics
-from wallet_tracker import WalletTracker
 from web3 import Web3
 
 class TradeManager:
@@ -36,6 +36,9 @@ class TradeManager:
             return  # Already running
         self.running = True
         await self.crypto_data.connect_ws()
+
+        # Import WalletTracker here to avoid circular import
+        from wallet_tracker import WalletTracker
 
         while self.running:
             # Fetch market data
