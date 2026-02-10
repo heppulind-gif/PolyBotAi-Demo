@@ -1,86 +1,79 @@
 # crypto_data.py
 import asyncio
 import random
+import time
 from collections import deque
 
 class CryptoData:
     def __init__(self):
-        # Historical data caches (maxlen=500)
+        # Historical caches
         self.polymarket_history = deque(maxlen=500)
         self.btc_history = deque(maxlen=500)
         self.eth_history = deque(maxlen=500)
         self.link_history = deque(maxlen=500)
 
-        # Simulated WebSocket connection flag
         self.ws_connected = False
+
+    # ---------- CONNECTION ----------
 
     async def connect_ws(self):
         """
-        Simulate establishing a low-latency WebSocket connection
+        Simulated low-latency websocket connection.
+        Keeps async structure compatible with real APIs later.
         """
         await asyncio.sleep(0.1)
         self.ws_connected = True
-        print("[CryptoData] WebSocket connected.")
 
-    async def fetch_polymarket(self):
+    # ---------- POLYMARKET (15 MIN UP/DOWN) ----------
+
+    async def get_polymarket_odds(self):
         """
-        Fetch simulated Polymarket odds (0-1)
+        Returns simulated Polymarket odds.
+        Replace later with real Polymarket API.
         """
-        odds = round(random.uniform(0.4, 0.6), 3)
+        up_prob = random.uniform(0.45, 0.55)
+        down_prob = 1 - up_prob
+
+        odds = {
+            "up_prob": round(up_prob, 4),
+            "down_prob": round(down_prob, 4),
+            "timestamp": time.time()
+        }
+
         self.polymarket_history.append(odds)
         return odds
 
-    async def fetch_btc(self):
-        """
-        Fetch simulated BTC price
-        """
-        price = round(random.uniform(26000, 28000), 2)
-        self.btc_history.append(price)
-        return price
+    # ---------- CRYPTO PRICES ----------
 
-    async def fetch_eth(self):
+    async def get_crypto_data(self):
         """
-        Fetch simulated ETH price
+        Returns BTC, ETH, LINK price + price change.
         """
-        price = round(random.uniform(1600, 1800), 2)
-        self.eth_history.append(price)
-        return price
+        btc = self._generate_price(self.btc_history, base=65000)
+        eth = self._generate_price(self.eth_history, base=3200)
+        link = self._generate_price(self.link_history, base=18)
 
-    async def fetch_link(self):
-        """
-        Fetch simulated LINK price
-        """
-        price = round(random.uniform(6.5, 8.5), 2)
-        self.link_history.append(price)
-        return price
+        return btc, eth, link
 
-    async def get_latest_data(self):
-        """
-        Fetch all latest market data simultaneously
-        """
-        polymarket = await self.fetch_polymarket()
-        btc = await self.fetch_btc()
-        eth = await self.fetch_eth()
-        link = await self.fetch_link()
+    # ---------- INTERNAL HELPERS ----------
 
-        return {
-            "polymarket": polymarket,
-            "btc": btc,
-            "eth": eth,
-            "link": link
+    def _generate_price(self, history, base):
+        """
+        Generates realistic micro price movement.
+        """
+        if not history:
+            price = base
+        else:
+            price = history[-1]["price"]
+
+        change = random.uniform(-0.003, 0.003)
+        new_price = price * (1 + change)
+
+        data = {
+            "price": round(new_price, 4),
+            "price_change": round(change, 6),
+            "time": time.time()
         }
 
-    def get_history(self, market: str):
-        """
-        Return historical data for a given market
-        """
-        if market.lower() == "polymarket":
-            return list(self.polymarket_history)
-        elif market.lower() == "btc":
-            return list(self.btc_history)
-        elif market.lower() == "eth":
-            return list(self.eth_history)
-        elif market.lower() == "link":
-            return list(self.link_history)
-        else:
-            return []
+        history.append(data)
+        return data
