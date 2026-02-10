@@ -1,52 +1,56 @@
 # orderbook_analyzer.py
 import asyncio
 import random
+import time
 from collections import deque
-from time import time
-
 
 class OrderBookAnalyzer:
     def __init__(self):
-        # Store recent orderbook snapshots (max 500)
-        self.orderbook_history = deque(maxlen=500)
+        # Store recent orderbook snapshots
+        self.orderbook_history = deque(maxlen=300)
 
         # Liquidity & safety thresholds
-        self.max_spread = 0.05          # Max acceptable spread
-        self.min_bid_ask_ratio = 0.95   # Used for confirmation
-        self.max_bid_ask_ratio = 1.05
+        self.max_spread = 0.08          # too wide = bad market
+        self.min_liquidity_score = 0.4  # below = skip trade
 
-    async def fetch_orderbook(self, market: str = "POLY"):
+    # ---------- FETCH ORDERBOOK ----------
+
+    async def fetch_orderbook(self, market="POLY"):
         """
-        Simulate fetching order book data.
-        Returns a snapshot dictionary.
+        Simulated orderbook snapshot.
+        Structure matches real exchanges / Polymarket adapters.
         """
-        bids = random.uniform(0.45, 0.55)
-        asks = random.uniform(0.45, 0.55)
+        bids = random.uniform(0.4, 0.6)
+        asks = random.uniform(0.4, 0.6)
         spread = abs(bids - asks)
 
+        liquidity_score = min(bids, asks) / max(bids, asks)
+
         snapshot = {
-            "market": market,
-            "bids": bids,
-            "asks": asks,
-            "spread": spread,
-            "timestamp": time()
+            "bids": round(bids, 4),
+            "asks": round(asks, 4),
+            "spread": round(spread, 4),
+            "liquidity": round(liquidity_score, 4),
+            "time": time.time()
         }
 
         self.orderbook_history.append(snapshot)
         return snapshot
 
-    def is_liquid(self, snapshot: dict) -> bool:
-        """
-        Determine if the market is liquid enough to trade safely.
-        """
+    # ---------- LIQUIDITY CHECK ----------
+
+    def is_liquid(self, snapshot):
         if snapshot["spread"] > self.max_spread:
+            return False
+        if snapshot["liquidity"] < self.min_liquidity_score:
             return False
         return True
 
-    def confirm_signal(self, signal: str, snapshot: dict) -> str:
+    # ---------- SIGNAL CONFIRMATION ----------
+
+    def confirm_signal(self, signal, snapshot):
         """
-        Confirm or reject a trade signal based on order book conditions.
-        Returns: 'UP', 'DOWN', or 'HOLD'
+        Confirms or cancels ML signal based on orderbook.
         """
         if signal == "HOLD":
             return "HOLD"
@@ -56,31 +60,20 @@ class OrderBookAnalyzer:
 
         bid_ask_ratio = snapshot["bids"] / max(snapshot["asks"], 0.0001)
 
-        if signal == "UP" and bid_ask_ratio < self.min_bid_ask_ratio:
+        if signal == "UP" and bid_ask_ratio < 1:
             return "HOLD"
 
-        if signal == "DOWN" and bid_ask_ratio > self.max_bid_ask_ratio:
+        if signal == "DOWN" and bid_ask_ratio > 1:
             return "HOLD"
 
         return signal
 
-    async def get_confirmed_signal(self, signal: str, market: str = "POLY"):
-        """
-        Fetch orderbook and confirm ML signal in one call.
-        """
-        snapshot = await self.fetch_orderbook(market)
-        confirmed_signal = self.confirm_signal(signal, snapshot)
-        return confirmed_signal, snapshot
+    # ---------- FAST MONITOR LOOP ----------
 
-    async def background_monitor(self, interval: float = 0.5):
+    async def monitor(self, interval=0.3):
         """
-        Background monitoring loop (non-blocking).
-        Optional: run as asyncio task.
+        Optional continuous monitoring loop.
         """
         while True:
-            try:
-                await self.fetch_orderbook()
-                await asyncio.sleep(interval)
-            except Exception as e:
-                print(f"[OrderBookAnalyzer] Error: {e}")
-                await asyncio.sleep(1)
+            await self.fetch_orderbook()
+            await asyncio.sleep(interval)
