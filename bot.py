@@ -3,12 +3,14 @@ import os
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+
 from paper_engine import PaperEngine
 from trade_manager import TradeManager
 from analytics import Analytics
 from wallet_tracker import WalletTracker
 
-TOKEN = os.environ.get("8146985739:AAFU0kQ3U0llvEPepQLk4Cy1tM5H1ZzeL9c") # Set this in Railway ENV
+# Load Telegram token from environment variable
+TOKEN = os.environ.get("TELEGRAM_TOKEN")  # Set this in Railway ENV or local .env
 
 # Initialize components
 paper_engine = PaperEngine()
@@ -40,30 +42,43 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = "ON" if modes["paper"] else "OFF"
         await query.edit_message_text(f"Paper Mode is now {status}")
         if modes["paper"]:
+            # Run paper loop in background
             asyncio.create_task(paper_engine.run_paper_loop())
     elif data == "toggle_real":
         modes["real"] = not modes["real"]
         status = "ON" if modes["real"] else "OFF"
         await query.edit_message_text(f"Real Mode is now {status}")
         if modes["real"]:
+            # Run real trading loop in background safely
             asyncio.create_task(trade_manager.run_real_loop())
     elif data == "dashboard":
         msg = analytics.get_dashboard()
         await query.edit_message_text(msg)
     elif data == "wallet":
-        msg = wallet_tracker.get_status()
+        # Update wallet status
+        if hasattr(wallet_tracker, "get_status"):
+            msg = wallet_tracker.get_status()
+        else:
+            msg = "Wallet tracking not implemented yet."
         await query.edit_message_text(msg)
     elif data == "analytics":
         heatmap = analytics.get_correlation_map()
         await query.edit_message_text(heatmap)
 
 async def main():
+    # Build the Telegram app
     app = ApplicationBuilder().token(TOKEN).build()
+
+    # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
+
+    # Start the bot
     await app.start()
     await app.updater.start_polling()
-    await asyncio.Event().wait()  # Keep running
+
+    # Keep running
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
