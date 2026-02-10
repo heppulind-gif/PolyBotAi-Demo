@@ -1,86 +1,54 @@
 # wallet_tracker.py
 import os
-import time
 from web3 import Web3
+import requests
 
 class WalletTracker:
     def __init__(self):
-        self.rpc_url = os.environ.get("ETH_RPC_URL")
-        self.private_key = os.environ.get("WALLET_PRIVATE_KEY")
-
-        self.enabled = bool(self.rpc_url and self.private_key)
-
-        if self.enabled:
+        # Web3 setup (if you need it here too)
+        self.rpc_url = os.environ.get("ETH_RPC_URL")  # optional
+        if self.rpc_url:
             self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
-            self.account = self.w3.eth.account.from_key(self.private_key)
-            self.address = self.account.address
         else:
             self.w3 = None
-            self.address = None
 
-        self.last_balance = None
-        self.last_check = time.time()
-
-    # ---------- BALANCE ----------
-
-    def get_balance(self):
-        if not self.enabled:
-            return None
-
-        balance_wei = self.w3.eth.get_balance(self.address)
-        balance_eth = self.w3.from_wei(balance_wei, "ether")
-        return float(balance_eth)
-
-    # ---------- STATUS ----------
-
-    def get_status(self):
-        if not self.enabled:
-            return "👛 Wallet Tracker\n\nWallet not connected."
-
-        balance = self.get_balance()
-        delta = ""
-        if self.last_balance is not None:
-            diff = balance - self.last_balance
-            if abs(diff) > 0.00001:
-                delta = f"\nChange: {diff:+.5f} ETH"
-
-        self.last_balance = balance
-
-        return (
-            "👛 Wallet Tracker\n\n"
-            f"Address:\n{self.address}\n\n"
-            f"Balance: {balance:.5f} ETH"
-            f"{delta}"
-        )
-
-    # ---------- TRADE NOTIFICATION ----------
+        # Telegram bot setup (example)
+        self.telegram_token = os.environ.get("TELEGRAM_TOKEN")
+        self.telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
     def notify_trade(self, signal, stake, tx_hash):
         """
-        Used by TradeManager.
+        Notify user about a trade via Telegram.
         """
-        if not self.enabled:
-            return
+        message = f"Trade executed:\nSignal: {signal}\nStake: {stake} ETH\nTx: {tx_hash}"
 
-        print(
-            f"[REAL TRADE]\n"
-            f"Signal: {signal}\n"
-            f"Stake: {stake} ETH\n"
-            f"TX: {tx_hash}"
-        )
+        if self.telegram_token and self.telegram_chat_id:
+            url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
+            data = {"chat_id": self.telegram_chat_id, "text": message}
+            try:
+                requests.post(url, data=data)
+            except Exception as e:
+                print(f"Telegram notification failed: {e}")
+        else:
+            print(message)  # fallback: print to console
 
-    # ---------- WATCH LOOP (OPTIONAL) ----------
-
-    def check_balance_change(self, interval=30):
+    def track_wallet_balance(self, wallet_address):
         """
-        Optional periodic balance watcher.
+        Optional: Check ETH balance of a wallet.
         """
-        if not self.enabled:
-            return
+        if not self.w3:
+            print("Web3 not initialized, cannot track balance")
+            return None
+        try:
+            balance = self.w3.eth.get_balance(wallet_address)
+            eth_balance = self.w3.fromWei(balance, 'ether')
+            return eth_balance
+        except Exception as e:
+            print(f"Error fetching balance: {e}")
+            return None
 
-        while True:
-            bal = self.get_balance()
-            if self.last_balance and abs(bal - self.last_balance) > 0.001:
-                print(f"[WALLET CHANGE] {bal:.5f} ETH")
-            self.last_balance = bal
-            time.sleep(interval)
+    # If you need TradeManager inside here, import inside a method to avoid circular import
+    def example_trade_usage(self):
+        from trade_manager import TradeManager  # import inside method
+        # Example: just to show you can access it safely
+        print("TradeManager can be used here if needed")
