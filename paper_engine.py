@@ -1,69 +1,56 @@
 # paper_engine.py
 import asyncio
 import random
-import time
 from crypto_data import CryptoData
 from ml_engine import MLModel
 from portfolio_manager import PortfolioManager
-from orderbook_analyzer import OrderBookAnalyzer
 from analytics import Analytics
 
 class PaperEngine:
-    def __init__(self):
-        self.crypto_data = CryptoData()
-        self.ml_model = MLModel()
-        self.portfolio = PortfolioManager()
-        self.orderbook = OrderBookAnalyzer()
-        self.analytics = Analytics()
+    def __init__(self, crypto_data: CryptoData, ml_model: MLModel,
+                 portfolio: PortfolioManager, analytics: Analytics):
+        self.crypto_data = crypto_data
+        self.ml_model = ml_model
+        self.portfolio = portfolio
+        self.analytics = analytics
         self.running = False
-        self.simulation_speed = 0.5  # seconds per micro-decision
+        self.simulation_speed = 0.2  # seconds per micro-decision
 
-    async def run_paper_loop(self):
+    async def run_simulations(self):
+        """Main paper trading loop"""
         if self.running:
             return  # Already running
+
         self.running = True
-        await self.crypto_data.connect_ws()
+        print("🧪 PaperEngine started in background...")
 
         while self.running:
-            # Fetch latest market data
-            odds = await self.crypto_data.get_polymarket_odds()
-            btc, eth, link = await self.crypto_data.get_crypto_data()
+            try:
+                polymarket_odds = await self.crypto_data.get_polymarket_odds()
+                btc, eth, link = await self.crypto_data.get_crypto_data()
 
-            # Predict trade signal
-            signal, confidence = self.ml_model.predict(odds, btc, eth, link)
+                signal, confidence = self.ml_model.predict(
+                    polymarket_odds, btc, eth, link
+                )
 
-            # Confirm signal using orderbook
-            snapshot = await self.orderbook.fetch_orderbook()
-            final_signal = self.orderbook.confirm_signal(signal, snapshot)
+                stake = self.portfolio.calculate_stake(confidence)
+                tp, sl = self.portfolio.calculate_tp_sl(confidence)
 
-            # Calculate stake and TP/SL
-            stake = self.portfolio.calculate_stake(confidence)
-            tp, sl = self.portfolio.calculate_tp_sl(confidence)
+                profit_loss = self._simulate_trade(signal, stake, tp, sl)
 
-            # Simulate trade outcome
-            profit_loss = self._simulate_trade(final_signal, stake, tp, sl)
+                self.portfolio.update_balance(profit_loss)
+                self.analytics.log_trade(signal, stake, tp, sl, profit_loss, confidence)
+                self.analytics.update_market_data(polymarket_odds, btc, eth, link)
 
-            # Update portfolio & analytics
-            self.portfolio.update_balance(profit_loss)
-            self.analytics.log_trade(final_signal, stake, tp, sl, profit_loss, confidence)
-            self.analytics.update_market_data(odds, btc, eth, link)
-
-            # Micro-decision speed
-            await asyncio.sleep(self.simulation_speed)
+                await asyncio.sleep(self.simulation_speed)
+            except Exception as e:
+                print(f"[PaperEngine Error] {e}")
+                await asyncio.sleep(1)
 
     def _simulate_trade(self, signal, stake, tp, sl):
-        """
-        Simulate realistic P/L based on signal, stake, TP/SL.
-        - Uses confidence and randomness to mimic human behavior
-        """
         multiplier = 1.0
         if signal == "UP":
             multiplier = random.uniform(0.95, 1.05)
         elif signal == "DOWN":
             multiplier = random.uniform(0.95, 1.02)
-        else:  # HOLD
-            multiplier = 1.0
         return stake * (multiplier - 1)
-
-    def stop(self):
-        self.running = False
