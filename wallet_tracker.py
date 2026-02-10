@@ -1,54 +1,67 @@
 # wallet_tracker.py
 import os
+import asyncio
 from web3 import Web3
-import requests
+import random
 
 class WalletTracker:
     def __init__(self):
-        # Web3 setup (if you need it here too)
-        self.rpc_url = os.environ.get("ETH_RPC_URL")  # optional
-        if self.rpc_url:
-            self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
-        else:
-            self.w3 = None
+        self.private_key = os.environ.get("WALLET_PRIVATE_KEY")
+        self.rpc_url = os.environ.get("ETH_RPC_URL")
+        self.enabled = False
+        self.w3 = None
+        self.address = None
 
-        # Telegram bot setup (example)
-        self.telegram_token = os.environ.get("TELEGRAM_TOKEN")
-        self.telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-
-    def notify_trade(self, signal, stake, tx_hash):
-        """
-        Notify user about a trade via Telegram.
-        """
-        message = f"Trade executed:\nSignal: {signal}\nStake: {stake} ETH\nTx: {tx_hash}"
-
-        if self.telegram_token and self.telegram_chat_id:
-            url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-            data = {"chat_id": self.telegram_chat_id, "text": message}
+        if self.private_key and self.rpc_url:
             try:
-                requests.post(url, data=data)
+                self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+                self.address = self.w3.eth.account.from_key(self.private_key).address
+                self.enabled = True
+                print(f"💳 Wallet connected: {self.address}")
             except Exception as e:
-                print(f"Telegram notification failed: {e}")
+                print(f"[WalletTracker Error] Failed to connect wallet: {e}")
+                self.enabled = False
         else:
-            print(message)  # fallback: print to console
+            print("⚠️ WalletTracker disabled: Missing private key or RPC URL")
 
-    def track_wallet_balance(self, wallet_address):
-        """
-        Optional: Check ETH balance of a wallet.
-        """
-        if not self.w3:
-            print("Web3 not initialized, cannot track balance")
-            return None
+    async def get_balance(self):
+        """Return current ETH balance"""
+        if not self.enabled:
+            return 0.0
         try:
-            balance = self.w3.eth.get_balance(wallet_address)
-            eth_balance = self.w3.fromWei(balance, 'ether')
-            return eth_balance
+            balance_wei = self.w3.eth.get_balance(self.address)
+            balance_eth = self.w3.from_wei(balance_wei, 'ether')
+            return float(balance_eth)
         except Exception as e:
-            print(f"Error fetching balance: {e}")
-            return None
+            print(f"[WalletTracker Error] get_balance: {e}")
+            return 0.0
 
-    # If you need TradeManager inside here, import inside a method to avoid circular import
-    def example_trade_usage(self):
-        from trade_manager import TradeManager  # import inside method
-        # Example: just to show you can access it safely
-        print("TradeManager can be used here if needed")
+    async def execute_trade(self, signal, stake, tp, sl):
+        """
+        Simulate or execute a trade.
+        - signal: 'UP' or 'DOWN'
+        - stake: ETH amount
+        - tp/sl: take profit / stop loss
+        Returns profit/loss
+        """
+        if not self.enabled:
+            # Paper trade fallback
+            return random.uniform(-stake*0.05, stake*0.05)
+
+        try:
+            # ⚠️ Placeholder: replace with actual trading logic
+            # For now, we simulate a trade like a human would
+            outcome_multiplier = 1.0
+            if signal == "UP":
+                outcome_multiplier = random.uniform(0.95, 1.05)
+            elif signal == "DOWN":
+                outcome_multiplier = random.uniform(0.95, 1.02)
+
+            profit_loss = stake * (outcome_multiplier - 1)
+            return profit_loss
+
+            # Later: send a transaction via self.w3.eth.send_transaction({...})
+            # Ensure proper gas, slippage protection, and safety checks
+        except Exception as e:
+            print(f"[WalletTracker Error] execute_trade: {e}")
+            return 0.0
